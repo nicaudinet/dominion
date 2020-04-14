@@ -37,12 +37,12 @@ instance {-# OVERLAPPABLE #-} (a :<: c) => a :<: (b + c) where
 
 -- | Properties of every card
 class IsCard a where
-  price :: a -> Int
+  price :: a -> Natural
 
 
 -- * Card definitions
 
-type Card = Treasure + Victory
+type Card = Treasure + Victory + Action
 
 -- ** Treasure Cards
 
@@ -67,6 +67,24 @@ instance IsCard Victory where
   price Estate = 2
   price Duchy = 5
   price Province = 8
+
+-- ** Action Cards
+
+data Action
+  = Cellar
+  | Chapel
+  | Village
+  | Smithy
+  | Market
+  | Mine
+
+instance IsCard Action where
+  price Cellar = 2
+  price Chapel = 2
+  price Village = 3
+  price Smithy = 4
+  price Market = 5
+  price Mine = 5
 
 
 -- * Deck definition
