@@ -1,117 +1,83 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Main where
 
 import Numeric.Natural
 
 
--- * Type classes
+-- * Helper material
 
+-- ** Combining data types
+
+data a + b = InL a | InR b
+infixr 8 +
+
+instance (IsCard a, IsCard b) => IsCard (a + b) where
+  price (InL a) = price a
+  price (InR b) = price b
+
+-- ** Injection
+
+class a :<: b where
+  inj :: a -> b
+
+instance a :<: a where
+  inj = id
+
+instance a :<: (a + b) where
+  inj = InL
+
+instance {-# OVERLAPPABLE #-} (a :<: c) => a :<: (b + c) where
+  inj = InR . inj
+
+
+-- * Type Classes
+
+-- | Properties of every card
 class IsCard a where
-  price :: a -> Price
-
-class IsTreasure a where
-  treasure :: a -> Treasure
-
-class IsVictory a where
-  victory :: a -> Victory
+  price :: a -> Int
 
 
--- * Game values
+-- * Card definitions
 
-newtype Price = Price Natural
-  deriving Num
+type Card = Treasure + Victory
 
-newtype Treasure = Treasure Natural
-  deriving Num
+-- ** Treasure Cards
 
-newtype Victory = Victory Natural
-  deriving Num
+data Treasure
+  = Copper
+  | Silver
+  | Gold
 
-newtype Actions = Actions Natural
-  deriving Num
-
-newtype Buys = Buys Natural
-  deriving Num
-
-
--- * Game types
-
-type Deck = forall a. IsCard a => [a]
-
-type Board = forall a. IsCard a => [(Int, a)]
-
-
--- * Treasure cards
-
-data Copper = Copper
-instance IsCard Copper where
+instance IsCard Treasure where
   price Copper = 0
-instance IsTreasure Copper where
-  treasure Copper = 1
-
-data Silver = Silver
-instance IsCard Silver where
   price Silver = 3
-instance IsTreasure Silver where
-  treasure Silver = 2
-
-data Gold = Gold
-instance IsCard Gold where
   price Gold = 6
-instance IsTreasure Gold where
-  treasure Gold = 3
 
+-- ** Victory Cards
 
--- * Victory cards
+data Victory
+  = Estate
+  | Duchy
+  | Province
 
-data Estate = Estate
-instance IsCard Estate where
+instance IsCard Victory where
   price Estate = 2
-instance IsVictory Estate where
-  victory Estate = 1
-
-data Dutchy = Dutchy
-instance IsCard Dutchy where
-  price Dutchy = 5
-instance IsVictory Dutchy where
-  victory Dutchy = 3
-
-data Province = Province
-instance IsCard Province where
+  price Duchy = 5
   price Province = 8
-instance IsVictory Province where
-  victory Province = 6
 
 
--- * Action cards
+-- * Deck definition
 
-data Villager = Villager
-instance IsCard Villager where
-  price Villager = 3
+type Deck = [Card]
 
-data Smithy = Smithy
-instance IsCard Smithy where
-  price Smithy = 4
+startDeck :: Deck
+startDeck = replicate 3 (inj Estate) <> replicate 7 (inj Copper)
 
-data Mine = Mine
-instance IsCard Mine where
-  price Mine = 5
 
-data Market = Market
-instance IsCard Market where
-  price Market = 5
-
-data Cellar = Cellar
-instance IsCard Cellar where
-  price Cellar = 2
-
-data Chapel = Chapel
-instance IsCard Chapel where
-  price Chapel = 2
-
--- * Main
+-- * Main function
 
 main :: IO ()
 main = putStrLn "Hello, Haskell!"
