@@ -1,48 +1,54 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Main where
 
+import Data.Void
 import Numeric.Natural
 
 
 -- * Helper material
 
--- ** Combining data types
+-- ** Summable
 
-data a + b = InL a | InR b
-infixr 8 +
+class Summable (as :: [*]) where
+  data Summed as :: *
 
-instance (IsCard a, IsCard b) => IsCard (a + b) where
-  price (InL a) = price a
-  price (InR b) = price b
+instance Summable '[] where
+  data Summed '[] = Void
 
--- ** Injection
+instance Summable (a ': as) where
+  data Summed (a ': as)
+    = InL a
+    | InR (Summed as)
 
-class a :<: b where
-  inj :: a -> b
+class Injectable (a :: *) (as :: [*]) where
+  inj :: a -> Summed as
 
-instance a :<: a where
-  inj = id
-
-instance a :<: (a + b) where
+instance Injectable a (a ': as) where
   inj = InL
 
-instance {-# OVERLAPPABLE #-} (a :<: c) => a :<: (b + c) where
+instance {-# OVERLAPPABLE #-} Injectable a as => Injectable a (b ': as) where
   inj = InR . inj
 
 
 -- * Type Classes
 
 -- | Properties of every card
-class IsCard a where
+class (Injectable a CardTypes) => IsCard a where
   price :: a -> Natural
 
 
 -- * Card definitions
 
-type Card = Treasure + Victory + Action
+type CardTypes = '[Treasure, Victory, Action]
+type Card = Summed CardTypes
 
 -- ** Treasure Cards
 
@@ -93,6 +99,38 @@ type Deck = [Card]
 
 startDeck :: Deck
 startDeck = replicate 3 (inj Estate) <> replicate 7 (inj Copper)
+
+
+-- * Board definitions
+
+data Pile = Pile
+  { card :: Card
+  , size :: Natural
+  }
+
+type Board = [Pile]
+
+pile :: Injectable a CardTypes => a -> Natural -> Pile
+pile card = Pile (inj card)
+
+startBoard :: Board
+startBoard =
+  -- Treasure cards
+  [ pile Gold 20
+  , pile Silver 20
+  , pile Copper 20
+  -- Victory cards
+  , pile Estate 15
+  , pile Duchy 15
+  , pile Province 15
+  -- Actions
+  , pile Cellar 10
+  , pile Chapel 10
+  , pile Village 10
+  , pile Smithy 10
+  , pile Market 10
+  , pile Mine 10
+  ]
 
 
 -- * Main function
