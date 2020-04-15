@@ -9,6 +9,7 @@
 
 module Main where
 
+import Control.Monad.State
 import Data.Void
 import Numeric.Natural
 
@@ -93,15 +94,26 @@ instance IsCard Action where
   price Mine = 5
 
 
--- * Deck definition
+-- * Game state types
+
+-- ** Deck definition
 
 type Deck = [Card]
 
 startDeck :: Deck
 startDeck = replicate 3 (inj Estate) <> replicate 7 (inj Copper)
 
+-- ** Player definition
 
--- * Board definitions
+data Player = Player
+  { deck :: Deck
+  , discard :: Deck
+  }
+
+startPlayer :: Player
+startPlayer = Player startDeck []
+
+-- ** Board definition
 
 data Pile = Pile
   { card :: Card
@@ -131,6 +143,24 @@ startBoard =
   , pile Market 10
   , pile Mine 10
   ]
+
+
+-- * Game
+
+data GameState = GameState
+  { players :: [Player]
+  , board :: Board
+  }
+
+startGameState :: Natural -> GameState
+startGameState n =
+  let players = replicate (fromIntegral n) startPlayer
+  in GameState players startBoard
+
+type Game a = State GameState a
+
+runGame :: Natural -> Game a -> (a, GameState)
+runGame n = flip runState (startGameState n)
 
 
 -- * Main function
