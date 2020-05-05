@@ -2,16 +2,23 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
-
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Main where
 
+import Control.Exception.Safe
 import Control.Monad.State
+import Data.List
+import Data.Ord
 import Data.Void
 import Numeric.Natural
+import System.Random
 
 
 -- * Helper material
@@ -29,6 +36,8 @@ instance Summable (a ': as) where
     = InL a
     | InR (Summed as)
 
+-- ** Injectable
+
 class Injectable (a :: *) (as :: [*]) where
   inj :: a -> Summed as
 
@@ -38,18 +47,40 @@ instance Injectable a (a ': as) where
 instance {-# OVERLAPPABLE #-} Injectable a as => Injectable a (b ': as) where
   inj = InR . inj
 
+-- ** Extractable
+
+class Extractable (a :: *) (as :: [*]) where
+  ext :: Summed as -> Maybe a
+
+instance Extractable a (a ': as) where
+  ext (InL a) = Just a
+  ext (InR _) = Nothing
+
+instance {-# OVERLAPPABLE #-} Extractable a as => Extractable a (b ': as) where
+  ext (InL _) = Nothing
+  ext (InR as) = ext as
+
+-- ** PartOf
+
+type a :<: b = (Injectable a b, Extractable a b)
+infixr 8 :<:
+
 
 -- * Type Classes
 
 -- | Properties of every card
-class (Injectable a CardTypes) => IsCard a where
+class a :<: CardList => IsCard a where
   price :: a -> Natural
+
+class Drawable pile where
+  type Draw pile :: *
+  draw :: pile -> Draw pile
 
 
 -- * Card definitions
 
-type CardTypes = '[Treasure, Victory, Action]
-type Card = Summed CardTypes
+type CardList = '[Treasure, Victory, Action]
+type Card = Summed CardList
 
 -- ** Treasure Cards
 
@@ -106,12 +137,37 @@ startDeck = replicate 3 (inj Estate) <> replicate 7 (inj Copper)
 -- ** Player definition
 
 data Player = Player
-  { deck :: Deck
-  , discard :: Deck
+  { playerDeck :: Deck
+  , playerDiscard :: Deck
   }
+
+instance Drawable Player where
+  type Draw Player = IO (Card, Player)
+  draw (Player [] []) = throwIO PlayerHasNoCards
+  draw (Player [] discard) = do
+    newDeck <- shuffle discard
+    draw (Player newDeck [])
+  draw (Player (card : remainder) discard) = do
+    pure (card, Player remainder discard)
 
 startPlayer :: Player
 startPlayer = Player startDeck []
+
+shuffle :: [a] -> IO [a]
+shuffle xs = do
+  ns <- replicateM (length xs) (randomRIO (minBound :: Int, maxBound))
+  pure (map snd (sortBy (comparing fst) (zip ns xs)))
+
+drawHand :: Player -> IO ([Card], Player)
+drawHand player = runStateT (replicateM 5 go) player
+  where
+    go :: StateT Player IO Card
+    go = do
+      (card, newPlayer) <- liftIO . draw =<< get
+      put newPlayer
+      pure card
+
+data Players = Two { current :: Player, other :: Player }
 
 -- ** Board definition
 
@@ -120,9 +176,14 @@ data Pile = Pile
   , size :: Natural
   }
 
+instance Drawable Pile where
+  type Draw Pile = Maybe Card
+  draw (Pile _ 0) = Nothing
+  draw (Pile c _) = Just c
+
 type Board = [Pile]
 
-pile :: Injectable a CardTypes => a -> Natural -> Pile
+pile :: IsCard a => a -> Natural -> Pile
 pile card = Pile (inj card)
 
 startBoard :: Board
@@ -148,19 +209,30 @@ startBoard =
 -- * Game
 
 data GameState = GameState
-  { players :: [Player]
+  { players :: Players
   , board :: Board
   }
 
-startGameState :: Natural -> GameState
-startGameState n =
-  let players = replicate (fromIntegral n) startPlayer
-  in GameState players startBoard
+startGameState :: GameState
+startGameState = GameState (Two startPlayer startPlayer) startBoard
 
-type Game a = State GameState a
+type Game a = StateT GameState IO a
 
-runGame :: Natural -> Game a -> (a, GameState)
-runGame n = flip runState (startGameState n)
+
+turn :: Game ()
+turn = do
+  currentPlayer <- gets (current . players)
+  hand <- liftIO $ drawHand currentPlayer
+  pure ()
+
+runGame :: Game a -> IO (a, GameState)
+runGame = flip runStateT startGameState
+
+
+-- * Exceptions
+
+data PlayerHasNoCards = PlayerHasNoCards
+  deriving (Show, Exception)
 
 
 -- * Main function
