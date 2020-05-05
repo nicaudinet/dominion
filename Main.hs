@@ -9,6 +9,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Main where
 
@@ -172,8 +173,8 @@ data Players = Two { current :: Player, other :: Player }
 -- ** Board definition
 
 data Pile = Pile
-  { card :: Card
-  , size :: Natural
+  { pileCard :: Card
+  , pileSize :: Natural
   }
 
 instance Drawable Pile where
@@ -204,6 +205,28 @@ startBoard =
   , pile Market 10
   , pile Mine 10
   ]
+
+
+-- * Turn
+
+data TurnTracker = TurnTracker
+  { hand :: [Card]
+  , playedCards :: [Card]
+  , actions :: Natural
+  , buys :: Natural
+  }
+
+initTurn :: [Card] -> TurnTracker
+initTurn hand = TurnTracker hand [] 1 1
+
+card :: IsCard a => Card -> a
+card = maybe (error "tried to match a type which is not a card") id . ext
+
+purchasePower :: Card -> Natural
+purchasePower (card -> Gold) = 3
+purchasePower (card -> Silver) = 2
+purchasePower (card -> Copper) = 1
+purchasePower _ = 0
 
 
 -- * Game
