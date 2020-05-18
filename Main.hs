@@ -1,23 +1,32 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Main where
 
 import Control.Exception.Safe
 import Control.Monad.State
+import Data.Generics.Product
 import Data.List
 import Data.Ord
 import Data.Void
+import GHC.Generics
+import Lens.Micro
+import Lens.Micro.Extras
 import Numeric.Natural
 import System.Random
 
@@ -159,16 +168,8 @@ shuffle xs = do
   ns <- replicateM (length xs) (randomRIO (minBound :: Int, maxBound))
   pure (map snd (sortBy (comparing fst) (zip ns xs)))
 
-drawHand :: Player -> IO ([Card], Player)
-drawHand player = runStateT (replicateM 5 go) player
-  where
-    go :: StateT Player IO Card
-    go = do
-      (card, newPlayer) <- liftIO . draw =<< get
-      put newPlayer
-      pure card
-
 data Players = Two { current :: Player, other :: Player }
+  deriving Generic
 
 -- ** Board definition
 
@@ -229,27 +230,56 @@ purchasePower (card -> Copper) = 1
 purchasePower _ = 0
 
 
+-- * Lenses
+
+currentPlayer :: Lens' GameState Player
+currentPlayer = field @"players" . field @"current"
+
+
+
 -- * Game
+
+newtype Game a = Game (StateT GameState IO a)
+  deriving newtype (Functor, Applicative, Monad, MonadState GameState, MonadIO)
 
 data GameState = GameState
   { players :: Players
   , board :: Board
   }
+  deriving Generic
 
 startGameState :: GameState
 startGameState = GameState (Two startPlayer startPlayer) startBoard
 
-type Game a = StateT GameState IO a
+drawHand :: Game [Card]
+drawHand = do
+  player <- gets (view currentPlayer)
+  (hand, newPlayer) <- liftIO $ runStateT (replicateM 5 go) player
+  modify (over currentPlayer (const newPlayer))
+  pure hand
+  where
+    go :: StateT Player IO Card
+    go = do
+      (card, newPlayer) <- liftIO . draw =<< get
+      put newPlayer
+      pure card
 
+playHand :: StateT [Card] Game ()
+playHand = do
+  actionPhase
+  buyPhase
+
+actionPhase :: StateT [Card] Game ()
+actionPhase = undefined
+
+buyPhase :: StateT [Card] Game ()
+buyPhase = undefined
 
 turn :: Game ()
-turn = do
-  currentPlayer <- gets (current . players)
-  hand <- liftIO $ drawHand currentPlayer
-  pure ()
+turn = drawHand >>= evalStateT playHand
 
 runGame :: Game a -> IO (a, GameState)
-runGame = flip runStateT startGameState
+runGame (Game game) = runStateT game startGameState
 
 
 -- * Exceptions

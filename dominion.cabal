@@ -23,6 +23,8 @@ executable dominion
   -- other-extensions:
   build-depends:
       base >=4.12 && <4.13
+    , generic-lens
+    , microlens
     , mtl
     , random
     , safe-exceptions
