@@ -144,6 +144,8 @@ type Deck = [Card]
 startDeck :: Deck
 startDeck = replicate 3 (inj Estate) <> replicate 7 (inj Copper)
 
+newtype Hand = Hand [Card]
+
 -- ** Player definition
 
 data Player = Player
@@ -251,12 +253,12 @@ data GameState = GameState
 startGameState :: GameState
 startGameState = GameState (Two startPlayer startPlayer) startBoard
 
-drawHand :: Game [Card]
+drawHand :: Game Hand
 drawHand = do
   player <- gets (view currentPlayer)
   (hand, newPlayer) <- liftIO $ runStateT (replicateM 5 go) player
   modify (over currentPlayer (const newPlayer))
-  pure hand
+  pure (Hand hand)
   where
     go :: StateT Player IO Card
     go = do
@@ -264,19 +266,18 @@ drawHand = do
       put newPlayer
       pure card
 
-playHand :: StateT [Card] Game ()
-playHand = do
-  actionPhase
-  buyPhase
+playHand :: Hand -> Game ()
+playHand = buyPhase <=< actionPhase
 
-actionPhase :: StateT [Card] Game ()
-actionPhase = undefined
+actionPhase :: Hand -> Game Hand
+actionPhase hand = undefined
 
-buyPhase :: StateT [Card] Game ()
+
+buyPhase :: Hand -> Game ()
 buyPhase = undefined
 
 turn :: Game ()
-turn = drawHand >>= evalStateT playHand
+turn = drawHand >>= playHand
 
 runGame :: Game a -> IO (a, GameState)
 runGame (Game game) = runStateT game startGameState
